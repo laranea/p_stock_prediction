@@ -10,6 +10,8 @@ import seaborn as sns
 
 # https://matplotlib.org/gallery/lines_bars_and_markers/scatter_hist.html#sphx-glr-gallery-lines-bars-and-markers-scatter-hist-py
 # https://towardsdatascience.com/the-art-of-effective-visualization-of-multi-dimensional-data-6c7202990c57
+#https://becominghuman.ai/linear-regression-in-python-with-pandas-scikit-learn-72574a2ec1a5
+
 
 
 def load_and_format_csv(filename='./data/AAPL.csv'):
@@ -23,14 +25,24 @@ def load_and_format_csv(filename='./data/AAPL.csv'):
     print(df.columns)
     return df
 
-def split_training_testing_set(df):
-    open_X_train = df['Open'][:-20]
-    open_X_test = df['Open'][-20:]
+def split_training_testing_set(df, x_df=None, y_df=None, size=20):
 
-    close_Y_train = df['Close'][:-20]
-    close_Y_test = df['Close'][-20:]
+    train_test = lambda df: df[:-size], df[-size:]
 
-    return open_X_train, close_Y_train, open_X_test, close_Y_test
+    x_df = x_df or df['Open']
+    y_df = y_df or df['Close']
+
+    df_x_train, df_x_test  = train_test(x_df)
+    df_y_train, df_y_test = train_test(y_df)
+    return df_x_train, df_y_train, df_x_test, df_y_test
+
+
+class DataCleaning:
+
+    @staticmethod
+    def rolling_mean(serie, window):
+        return serie.rolling(window=window).mean()
+
 
     
 class Regression:
@@ -46,24 +58,39 @@ class Regression:
         # print("Mean squared error: %.2f"
         #       % mean_squared_error(close_y_test, close_y_pred))
 
-        sns.heatmap(
-            data=df.corr(),
-            vmin=-1, vmax=1, center=0,
-            cmap=sns.diverging_palette(20, 220, n=200),
-            square=True
-        )
+        # sns.heatmap(
+        #     data=df.corr(),
+        #     vmin=-1, vmax=1, center=0,
+        #     cmap=sns.diverging_palette(20, 220, n=200),
+        #     square=True
+        # )
+        sns.pairplot(df)
         # plt.scatter(df['Open'], df['Adj Close'])
         plt.show()
         
         # plt.scatter(open_X_test, open_Y_test, color='black')
         # plt.plot(open_X_test, open_Y_predict, color='blue', linewidth=3)
         # plt.show()
+
+def compare_rolling_mean(df, col='Adj Close'):
+    assert col in df.columns, f'missing {col} in df'
+    cols = [col]
+    for win_size in range(0, 100, 10):
+        colname = f'window: {win_size}'
+        df[colname] = DataCleaning.rolling_mean(df['Adj Close'],
+                                                window=win_size)
+        cols.append(colname)
         
+    df[cols].plot(title='Impact of the rolling mean window argument on AdjClose Serie')
+    plt.show()
 
-
+from numpy import geomspace
 if __name__ == '__main__':
     df = load_and_format_csv()
-    Regression.linear(df)
+    compare_rolling_mean(df)
+
+    
+    #Regression.linear(df)
 
     # from sklearn import datasets
     # diabetes = datasets.load_diabetes()
@@ -74,7 +101,7 @@ if __name__ == '__main__':
     # diabetes_X_train = diabetes_X[:-20]
     # diabetes_X_test = diabetes_X[-20:]    
 
-    print(diabetes_X_train)
+    # print(diabetes_X_train)
     
 
     # df[['Adj Close']].plot()
