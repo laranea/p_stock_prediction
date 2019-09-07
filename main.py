@@ -13,6 +13,7 @@ from operator import itemgetter
 from itertools import product
 from sklearn.metrics import mean_squared_error
 
+# Sources:
 # https://matplotlib.org/gallery/lines_bars_and_markers/scatter_hist.html#sphx-glr-gallery-lines-bars-and-markers-scatter-hist-py
 # https://towardsdatascience.com/the-art-of-effective-visualization-of-multi-dimensional-data-6c7202990c57
 # https://becominghuman.ai/linear-regression-in-python-with-pandas-scikit-learn-72574a2ec1a5
@@ -62,25 +63,29 @@ class Regression:
     # Change params to test if prediction is better or not
     modelname_fun = {
         'LinearRegression': model_params(linear_model.LinearRegression,
-                                         {'fit_intercept': [False],
+                                         {'fit_intercept': [False, True],
                                           'normalize': [True, False]}),
                              
         'Ridge': model_params(linear_model.Ridge,
-                              {'fit_intercept': [False],
-                               'alpha': [1.0, 1.1]}),
+                              {'fit_intercept': [False, True],
+                               'normalize': [True, False],
+                               'alpha': np.arange(0.1, 2., 0.2)}),
         
         'Lasso': model_params(linear_model.Lasso,
-                              {'fit_intercept': [False],
-                               'alpha': [1.0, 1.1],
+                              {'fit_intercept': [True, False],
+                               'normalize': [True, False],
+                               'alpha': np.arange(0.1, 2., 0.2),
                                }),
         'LassoLars': model_params(linear_model.LassoLars,
-                                  {'fit_intercept': [False],
-                                   'alpha': [1.0, 1.1]
+                                  {'fit_intercept': [True, False],
+                                   'normalize': [True, False],
+                                   'alpha': np.arange(0.1, 2., 0.2),
                                   }),
         
         'BayesianRidge': model_params(linear_model.BayesianRidge,
-                                      {'fit_intercept': [False],
-                                       'n_iter': [300]
+                                      {'fit_intercept': [True, False],
+                                       'normalize': [True, False],
+                                       'n_iter': [300],
                                       })
     }
 
@@ -103,15 +108,14 @@ class Regression:
         model_params = Regression.get_model(model_name)
         
         # For a model, get prediction for all configurations
-        for param_dict in [ dict(zip(model_params.params, v)) for v in product(*model_params.params.values()) ]:
+        config_dicts = [ dict(zip(model_params.params, v)) for v in product(*model_params.params.values())]
+        for config_dict in config_dicts:
 
-            config = [f'{k}={v}' for k,v in param_dict.items()]
+            config = [f'{k}={v}' for k,v in config_dict.items()]
             name = f'{model_name} s={size} frac={fraction}' + " ".join(config)
-            model = model_params.function(**param_dict)
-        
-            model.fit(sets.x_train, sets.y_train)
-            #y_pred_train = model.predict(sets.x_train) # comparison of training
+            model = model_params.function(**config_dict)
 
+            model.fit(sets.x_train, sets.y_train)
             y_pred = model.predict(sets.x_test)
 
             result_df = df.copy()
@@ -120,7 +124,8 @@ class Regression:
             result_df = result_df.iloc[sets.idx + sets.size:]
             result_df[name] = y_pred
 
-            results.append((name, np.sqrt(mean_squared_error(sets.y_test, y_pred)), result_df))
+            record = (name, np.sqrt(mean_squared_error(sets.y_test, y_pred)), result_df)
+            results.append(record)
 
         return results
 
@@ -147,18 +152,19 @@ if __name__ == '__main__':
     df = load_and_format_csv()
 
     # Testing several configurations to understand impact of prediction
-    sizes = [10, 15, 20]
-    fractions = [0.7]
+    sizes = [10, 15, 30, 45, 55] # windows size for prediction (in days)
+    fractions = [0.7, 0.8] # sample fraction for training / testing
     dfs = []
 
+    # Run all combinations and save rmse
     for size, fraction, modelname in product(sizes, fractions, Regression.modelname_fun.keys()):
-        for name, error, result_df in Regression.linear(df, df['Date'], df['Adj Close'], modelname, size, fraction):
-            model_score[name] = error
+        for (name, rmse, result_df) in Regression.linear(df, df['Date'], df['Adj Close'], modelname, size, fraction):
+            model_score[name] = rmse
             if dfs:
                 result_df.drop('Adj Close', axis=1, inplace=True)
             dfs.append(result_df)
 
-    # Sort results according to score (Best is the first)
+    # Sort results according to RMSE (Best is the first)
     top10 = ['Adj Close'] # keep the Top 10
     for idx, (name, score) in enumerate(sorted(model_score.items(), key=itemgetter(1)), start=1):
         msg = f"[{idx}][model={name}] score={score}"
