@@ -7,6 +7,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
+from collections import namedtuple
 
 # https://matplotlib.org/gallery/lines_bars_and_markers/scatter_hist.html#sphx-glr-gallery-lines-bars-and-markers-scatter-hist-py
 # https://towardsdatascience.com/the-art-of-effective-visualization-of-multi-dimensional-data-6c7202990c57
@@ -25,16 +26,35 @@ def load_and_format_csv(filename='./data/AAPL.csv'):
     print(df.columns)
     return df
 
-def split_training_testing_set(df, x_df=None, y_df=None, size=20):
+def split_training_testing_set(x_df=None, y_df=None, size=50, fraction=0.8):
+    """
+    First, x_df is divided into x-windows of size=size.
+    """
 
-    train_test = lambda df: df[:-size], df[-size:]
+    assert len(x_df) == len(y_df), f'x_df must have size of y_df, now {len(x_df)} != {len(y_df)}'
 
-    x_df = x_df or df['Open']
-    y_df = y_df or df['Close']
+    nb_samples = len(x_df) - size
+    idx = int(fraction * nb_samples)
 
-    df_x_train, df_x_test  = train_test(x_df)
-    df_y_train, df_y_test = train_test(y_df)
-    return df_x_train, df_y_train, df_x_test, df_y_test
+    indices = np.arange(nb_samples).astype(np.int)[:,None] + np.arange(size + 1).astype(np.int)
+    data = y_df.values[indices]
+
+    X = data[:, :-1]
+    Y = data[:, -1]
+
+    training_testing = namedtuple('TT', 'x_train y_train x_test y_test size idx fraction')
+    return training_testing(X[:idx], Y[:idx], X[idx:], Y[idx:], size, idx, fraction)
+
+    
+    # train_set = lambda df: df[:idx]
+    # test_set = lambda df: df[idx:]
+
+    # print(x_df[:idx])
+    
+    # x_train, y_train = map(train_set, (x_df, y_df))
+    # x_test, y_test = map(test_set, (x_df, y_df))
+    # 
+    # return training_testing(x_train, y_train, x_test, y_test)
 
 
 class DataCleaning:
@@ -44,33 +64,41 @@ class DataCleaning:
         return serie.rolling(window=window).mean()
 
 
-    
+
 class Regression:
 
     @staticmethod
-    def linear(df):
-        # lr = linear_model.LinearRegression()
-        # open_X_train, close_Y_train, open_X_test, close_Y_test = split_training_testing_set(df)
-        # lr.fit(open_X_train, close_Y_train)
-        # close_Y_predict = lr.predict(open_X_test)
-        # print('Coefficients: \n', lr.coef_)
-        # # The mean squared error
-        # print("Mean squared error: %.2f"
-        #       % mean_squared_error(close_y_test, close_y_pred))
+    def get_model(model):
 
-        # sns.heatmap(
-        #     data=df.corr(),
-        #     vmin=-1, vmax=1, center=0,
-        #     cmap=sns.diverging_palette(20, 220, n=200),
-        #     square=True
-        # )
-        sns.pairplot(df)
-        # plt.scatter(df['Open'], df['Adj Close'])
+        name_fun = {
+            'LinearRegression': linear_model.LinearRegression,
+            'Ridge': linear_model.Ridge,
+            'Lasso': linear_model.Lasso,
+        }
+        try:
+            return name_fun[model]
+        except KeyError:
+            raise Exception(f'Unknown model {model}')
+
+    
+    @staticmethod
+    def linear(df, x_df, y_df, model_name='LinearRegression'):
+        sets = split_training_testing_set(x_df, y_df)
+
+        model = Regression.get_model(model_name)()
+        model.fit(sets.x_train, sets.y_train)
+
+        y_pred_train = model.predict(sets.x_train)
+        y_pred = model.predict(sets.x_test)
+
+        df_ridge = df.copy()
+        df_ridge.drop(['Open', 'High', 'Low', 'Close', 'Volume'], axis=1, inplace=True)
+        df_ridge.set_index('Date', inplace=True)
+        df_ridge = df_ridge.iloc[sets.size:sets.idx] # Past 32 days we don't know yet
+        df_ridge['Adj Close Train'] = y_pred_train[:-sets.size]
+        df_ridge.plot(label='TSLA', figsize=(16,8), title=f'Adjusted Closing Price {model_name}', grid=True)
         plt.show()
-        
-        # plt.scatter(open_X_test, open_Y_test, color='black')
-        # plt.plot(open_X_test, open_Y_predict, color='blue', linewidth=3)
-        # plt.show()
+
 
 def compare_rolling_mean(df, col='Adj Close'):
     assert col in df.columns, f'missing {col} in df'
@@ -87,10 +115,11 @@ def compare_rolling_mean(df, col='Adj Close'):
 from numpy import geomspace
 if __name__ == '__main__':
     df = load_and_format_csv()
-    compare_rolling_mean(df)
+    #compare_rolling_mean(df)
 
-    
-    #Regression.linear(df)
+    for model in ('LinearRegression', 'Ridge', 'Lasso'):
+        Regression.linear(df, df['Date'], df['Adj Close'], model)
+        
 
     # from sklearn import datasets
     # diabetes = datasets.load_diabetes()
