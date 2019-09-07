@@ -17,7 +17,7 @@ for all models and only top10 (RMSE score) are displayed.
 
   ![Alt text](top10_chart.png?raw=true "Comparison of stock prediction with linear models")
 
-##Root Mean Squarred Error results (sorted: best first)
+## Root Mean Squarred Error results (sorted: best first)
 
  - [1][model=LinearRegression s=10 frac=0.7fit_intercept=False normalize=True] score=3.329237228064044 ** BEST
  - [2][model=LinearRegression s=10 frac=0.7fit_intercept=False normalize=False] score=3.329237228064044
