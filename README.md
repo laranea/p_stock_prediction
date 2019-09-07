@@ -17,7 +17,7 @@ for all models and only top10 (RMSE score) are displayed.
 
   ![Alt text](top10_chart.png?raw=true "Comparison of stock prediction with linear models")
 
-##Root Mean Squarred Error results (sorted: best first)
+## Root Mean Squarred Error results (sorted: best first)
 
 Samples:
 
