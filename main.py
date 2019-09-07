@@ -8,6 +8,8 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import namedtuple
+from pandas import concat
+from operator import itemgetter
 
 # https://matplotlib.org/gallery/lines_bars_and_markers/scatter_hist.html#sphx-glr-gallery-lines-bars-and-markers-scatter-hist-py
 # https://towardsdatascience.com/the-art-of-effective-visualization-of-multi-dimensional-data-6c7202990c57
@@ -22,8 +24,6 @@ def load_and_format_csv(filename='./data/AAPL.csv'):
     df = read_csv(filename)     # loading csv
     if "Date" in df.columns:
         df['Date'] = to_datetime(df['Date'], format='%Y-%m-%d')
-    #df.set_index('Date', inplace=True)
-    print(df.columns)
     return df
 
 def split_training_testing_set(x_df=None, y_df=None, size=50, fraction=0.8):
@@ -45,17 +45,6 @@ def split_training_testing_set(x_df=None, y_df=None, size=50, fraction=0.8):
     training_testing = namedtuple('TT', 'x_train y_train x_test y_test size idx fraction')
     return training_testing(X[:idx], Y[:idx], X[idx:], Y[idx:], size, idx, fraction)
 
-    
-    # train_set = lambda df: df[:idx]
-    # test_set = lambda df: df[idx:]
-
-    # print(x_df[:idx])
-    
-    # x_train, y_train = map(train_set, (x_df, y_df))
-    # x_test, y_test = map(test_set, (x_df, y_df))
-    # 
-    # return training_testing(x_train, y_train, x_test, y_test)
-
 
 class DataCleaning:
 
@@ -63,41 +52,42 @@ class DataCleaning:
     def rolling_mean(serie, window):
         return serie.rolling(window=window).mean()
 
-
-
+from sklearn.metrics import mean_squared_error
 class Regression:
+
+    modelname_fun = {
+        'LinearRegression': linear_model.LinearRegression,
+        'Ridge': linear_model.Ridge,
+        'Lasso': linear_model.Lasso,
+        'LassoLars': linear_model.LassoLars,
+        'BayesianRidge': linear_model.BayesianRidge,
+    }
 
     @staticmethod
     def get_model(model):
 
-        name_fun = {
-            'LinearRegression': linear_model.LinearRegression,
-            'Ridge': linear_model.Ridge,
-            'Lasso': linear_model.Lasso,
-        }
         try:
-            return name_fun[model]
+            return Regression.modelname_fun[model]
         except KeyError:
             raise Exception(f'Unknown model {model}')
 
     
     @staticmethod
-    def linear(df, x_df, y_df, model_name='LinearRegression'):
+    def linear(df, x_df, y_df, model_name):
         sets = split_training_testing_set(x_df, y_df)
 
         model = Regression.get_model(model_name)()
         model.fit(sets.x_train, sets.y_train)
-
+        
         y_pred_train = model.predict(sets.x_train)
         y_pred = model.predict(sets.x_test)
 
-        df_ridge = df.copy()
-        df_ridge.drop(['Open', 'High', 'Low', 'Close', 'Volume'], axis=1, inplace=True)
-        df_ridge.set_index('Date', inplace=True)
-        df_ridge = df_ridge.iloc[sets.size:sets.idx] # Past 32 days we don't know yet
-        df_ridge['Adj Close Train'] = y_pred_train[:-sets.size]
-        df_ridge.plot(label='TSLA', figsize=(16,8), title=f'Adjusted Closing Price {model_name}', grid=True)
-        plt.show()
+        result_df = df.copy()
+        result_df.drop(['Open', 'High', 'Low', 'Close', 'Volume'], axis=1, inplace=True)
+        result_df.set_index('Date', inplace=True)
+        result_df = result_df.iloc[sets.size:sets.idx]
+        result_df[model_name] = y_pred_train[:-sets.size]
+        return mean_squared_error(sets.y_test, y_pred), result_df
 
 
 def compare_rolling_mean(df, col='Adj Close'):
@@ -112,29 +102,29 @@ def compare_rolling_mean(df, col='Adj Close'):
     df[cols].plot(title='Impact of the rolling mean window argument on AdjClose Serie')
     plt.show()
 
-from numpy import geomspace
+
 if __name__ == '__main__':
+
+
+    model_score = {}
+    dfs = []
+    
     df = load_and_format_csv()
-    #compare_rolling_mean(df)
 
-    for model in ('LinearRegression', 'Ridge', 'Lasso'):
-        Regression.linear(df, df['Date'], df['Adj Close'], model)
-        
-
-    # from sklearn import datasets
-    # diabetes = datasets.load_diabetes()
-    # # Use only one feature
-    # diabetes_X = diabetes.data[:, np.newaxis, 2]
+    for modelname in Regression.modelname_fun.keys():
+        error, result_df = Regression.linear(df, df['Date'], df['Adj Close'], modelname)
+        model_score[modelname] = error
+        if dfs:
+            result_df.drop('Adj Close', axis=1, inplace=True)
+        dfs.append(result_df)
     
-    # # Split the data into training/testing sets
-    # diabetes_X_train = diabetes_X[:-20]
-    # diabetes_X_test = diabetes_X[-20:]    
+    for idx, (model, score) in enumerate(sorted(model_score.items(), key=itemgetter(1)), start=1):
+        msg = f"[{idx}][model={model}] score={score}"
+        if idx == 1:
+            msg += " ** BEST"
+        print(msg)
+    print("-"*80)
 
-    # print(diabetes_X_train)
-    
-
-    # df[['Adj Close']].plot()
-    # plt.show()
-
-    
-    
+    compare_df = concat(dfs, axis=1)
+    compare_df.plot(grid=True, title='Comparison of multiples Linear Regression Models')
+    plt.show()
